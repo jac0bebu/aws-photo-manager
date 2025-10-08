@@ -72,7 +72,6 @@
       <span class="muted"> (stored in session)</span>
     </form>
   </div>
-  <img src="https://cob-bucket-nhe.s3.ap-southeast-1.amazonaws.com/Lofoten+Islands.jpg>" alt="My image">
-
+  <img src="https://cob-bucket-nhe.s3.ap-southeast-1.amazonaws.com/Lofoten%20Islands.jpg" alt="My image">
 </body>
 </html>
