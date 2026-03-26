@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo App</title>
+    <style>
+        /* Minimalist Reset */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 900px; margin: 40px auto; padding: 0 20px; background: #fff; }
+        h1, h2 { font-weight: 500; letter-spacing: -0.5px; }
+        input, button { font-size: 14px; padding: 10px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; outline: none; }
+        
+        /* Layout */
+        .hidden { display: none !important; }
+        .section { margin-bottom: 40px; border-bottom: 1px solid #eee; padding-bottom: 30px; }
+        
+        /* Form elements */
+        .form-group { margin-bottom: 15px; }
+        label { display: block; font-size: 12px; text-transform: uppercase; color: #888; margin-bottom: 5px; }
+        input[type="text"], input[type="email"], input[type="file"] { width: 100%; background: #fafafa; }
+        
+        /* Buttons */
+        button { background: #000; color: #fff; cursor: pointer; border: none; transition: background 0.2s; }
+        button:hover { background: #444; }
+        .btn-delete { background: #fff; color: #e74c3c; border: 1px solid #e74c3c; }
+        .btn-delete:hover { background: #e74c3c; color: #fff; }
+        .btn-download { background: #f0f0f0; color: #333; margin-right: 5px; }
+
+        /* Table */
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th { text-align: left; font-size: 12px; color: #888; padding: 10px; border-bottom: 2px solid #000; }
+        td { padding: 15px 10px; border-bottom: 1px solid #eee; vertical-align: middle; }
+        .thumb { width: 60px; height: 60px; object-fit: cover; background: #eee; }
+        
+        #display-token { background: #f9f9f9; color: #555; font-family: monospace; }
+
+        /* Modal */
+        #download-modal { 
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.7); display: flex; align-items: center; 
+            justify-content: center; z-index: 1000; 
+        }
+        #download-modal > div {
+            background: white; padding: 30px; border-radius: 8px; 
+            max-width: 90%; max-height: 90%; overflow: auto;
+        }
+        #download-modal h2 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        #download-modal button {
+            background: #e74c3c; color: white; border: none; 
+            padding: 8px 15px; cursor: pointer;
+        }
+        #download-image {
+            max-width: 100%; max-height: 70vh; object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-view">
+        <h1>Login</h1>
+        <div class="form-group">
+            <label>Email</label>
+            <input type="email" id="login-email" placeholder="email@example.com">
+        </div>
+        <button onclick="requestToken()" style="width: 100%;">Request Token</button>
+    </div>
+
+    <div id="app-view" class="hidden">
+        <header style="display: flex; justify-content: space-between; align-items: baseline;">
+            <h1>Photo Manager</h1>
+            <button onclick="location.reload()" style="background:none; color:#888; border:none; font-size:12px;">Logout</button>
+        </header>
+
+        <div class="section">
+            <label>Authentication Token</label>
+            <input type="text" id="display-token" placeholder="Your token">
+        </div>
+
+        <div class="section">
+            <h2>Upload</h2>
+            <div class="form-group"><label>File Name (Key)</label><input type="text" id="up-key"></div>
+            <div class="form-group"><label>Description</label><input type="text" id="up-desc"></div>
+            <div class="form-group"><label>Photo</label><input type="file" id="up-file"></div>
+            <button onclick="handleUpload()">Submit Upload</button>
+        </div>
+
+        <div class="section">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h2>Database</h2>
+                <button onclick="fetchPhotos()">List</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Preview</th>
+                        <th>Description</th>
+                        <th>Owner</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body">
+                    </tbody>
+            </table>
+        </div>
+
+        <!-- DOWNLOAD MODAL -->
+        <div id="download-modal" class="hidden" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000;">
+            <div style="background: white; padding: 30px; border-radius: 8px; max-width: 90%; max-height: 90%; overflow: auto;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2>Photo Viewer</h2>
+                    <button onclick="closeDownloadModal()" style="background: #e74c3c; color: white; border: none; padding: 8px 15px; cursor: pointer;">Close</button>
+                </div>
+                <img id="download-image" src="" alt="Downloaded photo" style="max-width: 100%; max-height: 70vh; object-fit: contain;">
+            </div>
+        </div>
+    </div>
+
+<script>
+    const API_URLS = {
+    TOKEN:    "https://<your-token-lambda-url>.lambda-url.ap-southeast-1.on.aws/",
+    LIST:     "https://<your-list-lambda-url>.lambda-url.ap-southeast-1.on.aws/",
+    UPLOAD:   "https://<your-upload-lambda-url>.lambda-url.ap-southeast-1.on.aws/",
+    DELETE:   "https://<your-delete-lambda-url>.lambda-url.ap-southeast-1.on.aws/",
+    DOWNLOAD: "https://<your-download-lambda-url>.lambda-url.ap-southeast-1.on.aws/"
+    };
+
+    let currentUserEmail = "";
+
+    async function requestToken() {
+        const email = document.getElementById('login-email').value;
+        if(!email) return alert("Email required");
+        try {
+            const res = await fetch(API_URLS.TOKEN, { method: "POST", body: JSON.stringify({ email }) });
+            if (!res.ok) {
+                return alert("Failed to get token. Check your email or server.");
+            }
+            const data = await res.json();
+            if(data.token) {
+                currentUserEmail = email;
+                document.getElementById('login-view').classList.add('hidden');
+                document.getElementById('app-view').classList.remove('hidden');
+                document.getElementById('display-token').value = data.token;
+                // fetchPhotos();
+            } else {
+                alert("No token received");
+            }
+        } catch (e) { 
+            alert("Auth error: " + e.message); 
+        }
+    }
+
+    async function fetchPhotos() {
+        const token = document.getElementById('display-token').value;
+        if (!token) {
+            alert("No token available. Please login.");
+            return;
+        }
+        try {
+            const res = await fetch(API_URLS.LIST, { method: "POST", body: JSON.stringify({ token:token, email:currentUserEmail }) });
+            if (!res.ok) {
+                alert("Failed to fetch photos. Status: " + res.status);
+                return;
+            }
+            const photos = await res.json();
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = photos.map(p => {
+                const resizedUrl = `https://resized-cob-kun-public.s3.ap-southeast-1.amazonaws.com/resized-${p.S3Key}`;
+                const originalUrl = `https://cob-kun-public.s3.ap-southeast-1.amazonaws.com/${p.S3Key}`;
+
+                return `
+                    <tr>
+                        <td>
+                            <img src="${resizedUrl}" class="thumb" 
+                                 onerror="this.src='data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2260%22 height=%2260%22%3E%3Crect fill=%22%23f0f0f0%22 width=%2260%22 height=%2260%22/%3E%3Ctext x=%2230%22 y=%2235%22 font-size=%2210%22 text-anchor=%22middle%22%3ENo Thumbnail%3C/text%3E%3C/svg%3E'">
+                        </td>
+                        <td>
+                            <strong>${p.S3Key}</strong><br/>
+                            <small style="color:#888;">${p.Description || 'No description'}</small>
+                        </td>
+                        <td><small>${p.UserEmail}</small></td>
+                        <td>
+                            <button class="btn-download btn-small" onclick="handleDownload('${p.S3Key}')">Get</button>
+                            <button class="btn-delete btn-small" onclick="handleDelete('${p.S3Key}')">Del</button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        } catch (e) { 
+            console.error("Load failed:", e);
+            alert("Error loading photos: " + e.message);
+        }
+    }
+
+    async function handleUpload() {
+        const token = document.getElementById('display-token').value;
+        const file = document.getElementById('up-file').files[0];
+        const key = document.getElementById('up-key').value;
+        const desc = document.getElementById('up-desc').value;
+        if(!file || !key) return alert("Missing file or key");
+
+        const base64 = await toBase64(file);
+        try {
+            const res = await fetch(API_URLS.UPLOAD, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "x-auth-token": token 
+                },
+                body: JSON.stringify({ token, email: currentUserEmail, key, description: desc, fileContent: base64 })
+            });
+            if(res.ok) { 
+                const responseData = await res.json();
+                if(responseData.status === "success") {
+                    alert("✓ Upload successful!\nFile: " + key);
+                    // Clear form
+                    document.getElementById('up-key').value = "";
+                    document.getElementById('up-desc').value = "";
+                    document.getElementById('up-file').value = "";
+                    // Refresh list after brief delay
+                    setTimeout(() => fetchPhotos(), 500);
+                } else {
+                    alert("Upload completed but with issues: " + (responseData.message || "Unknown"));
+                }
+            } else {
+                let errMsg = "Upload failed";
+                try {
+                    const errData = await res.json();
+                    errMsg = errData.error || errMsg;
+                } catch {
+                    errMsg = "HTTP " + res.status + ": " + errMsg;
+                }
+                alert("✗ " + errMsg);
+            }
+        } catch (e) { 
+            alert("✗ Upload error: " + e.message); 
+        }
+    }
+
+    async function handleDelete(key) {
+        if(!confirm("Delete?")) return;
+        const token = document.getElementById('display-token').value;
+        try {
+            const res = await fetch(API_URLS.DELETE, { 
+                method: "POST", 
+                body: JSON.stringify({ 
+                    email: currentUserEmail,
+                    token: token, 
+                    key: key 
+                }) 
+            });
+            if(res.ok) {
+                alert("Deleted successfully");
+                fetchPhotos();
+            } else {
+                const errData = await res.json();
+                alert("Delete failed: " + (errData.error || "Unknown error"));
+            }
+        } catch (e) { 
+            alert("Delete error: " + e.message); 
+        }
+    }
+
+    async function handleDownload(key) {
+        const token = document.getElementById('display-token').value;
+        try {
+            const res = await fetch(API_URLS.DOWNLOAD, { 
+                method: "POST", 
+                body: JSON.stringify({ token, key }) 
+            });
+            if(res.ok) {
+                const data = await res.json();
+                if(data.downloadUrl) {
+                    // Display image in modal instead of opening new tab
+                    document.getElementById('download-image').src = data.downloadUrl;
+                    document.getElementById('download-modal').classList.remove('hidden');
+                } else {
+                    alert("No download URL returned");
+                }
+            } else {
+                const errData = await res.json();
+                alert("Download failed: " + (errData.error || "Unknown error"));
+            }
+        } catch (e) { 
+            alert("Download error: " + e.message); 
+        }
+    }
+
+    function closeDownloadModal() {
+        document.getElementById('download-modal').classList.add('hidden');
+        document.getElementById('download-image').src = "";
+    }
+
+    function toBase64(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = () => resolve(reader.result.split(',')[1]);
+            reader.onerror = error => reject(error);
+        });
+    }
+</script>
+</body>
+</html>
